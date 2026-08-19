@@ -1,3 +1,10 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { User } from "@supabase/supabase-js";
+import { getSupabaseClient } from "@/lib/supabase/client";
+
 const chats = ["Planning a weekend trip", "Explain serverless apps", "Study notes for databases", "Ideas for a portfolio", "Help with TypeScript"];
 
 function Icon({ name }: { name: "chat" | "edit" | "settings" | "user" | "send" | "menu" }) {
@@ -13,6 +20,38 @@ function Icon({ name }: { name: "chat" | "edit" | "settings" | "user" | "send" |
 }
 
 export default function Home() {
+  const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) router.replace("/login");
+      setUser(data.session?.user ?? null);
+      setCheckingSession(false);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (!session) router.replace("/login");
+    });
+
+    return () => listener.subscription.unsubscribe();
+  }, [router]);
+
+  async function handleSignOut() {
+    await getSupabaseClient().auth.signOut();
+    router.replace("/login");
+  }
+
+  if (checkingSession || !user) {
+    return <main className="grid min-h-dvh place-items-center bg-[#f8f8f6] text-sm text-black/45">Loading Askly...</main>;
+  }
+
+  const displayName = user.email?.split("@")[0] ?? "Student";
+
   return (
     <main className="flex h-dvh overflow-hidden bg-[#f8f8f6] text-[#20201f]">
       <aside className="hidden w-72 shrink-0 flex-col border-r border-black/8 bg-[#efefec] p-3 md:flex">
@@ -24,7 +63,7 @@ export default function Home() {
         </nav>
         <div className="space-y-1 border-t border-black/8 pt-3">
           <button type="button" className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-black/65 hover:bg-black/5"><Icon name="settings" /> Settings</button>
-          <button type="button" className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-black/5"><div className="grid size-8 place-items-center rounded-full bg-[#d9ddd2] text-[#3b4434]"><Icon name="user" /></div><div className="min-w-0"><p className="truncate text-sm font-medium">Student User</p><p className="truncate text-xs text-black/45">student@example.com</p></div></button>
+          <div className="flex items-center gap-2 rounded-xl px-3 py-2.5"><div className="grid size-8 shrink-0 place-items-center rounded-full bg-[#d9ddd2] text-[#3b4434]"><Icon name="user" /></div><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium capitalize">{displayName}</p><p className="truncate text-xs text-black/45">{user.email}</p></div><button type="button" onClick={handleSignOut} className="rounded-lg px-2 py-1 text-xs font-medium text-black/50 hover:bg-black/5 hover:text-black">Log out</button></div>
         </div>
       </aside>
 
