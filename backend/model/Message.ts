@@ -6,5 +6,8 @@ export interface Message {
   role: MessageRole;
   content: string;
   position: number;
-  created_at: Date;
+  created_at: string;
 }
+
+export type CreateMessage = Pick<Message, "role" | "content" | "position">;
+export type UpdateMessage = Partial<CreateMessage>;
