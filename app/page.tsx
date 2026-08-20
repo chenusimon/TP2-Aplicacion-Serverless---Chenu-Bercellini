@@ -14,6 +14,7 @@ import {
   fetchMessages,
   saveMessage,
   updateChatTitle,
+  updateMessageContent,
 } from "@/lib/api/chat-client";
 import { fetchUserSettings, updateUserSettings } from "@/lib/api/settings-client";
 import { AppHeader } from "./components/AppHeader";
@@ -41,6 +42,7 @@ export default function Home() {
   const [messageError, setMessageError] = useState("");
   const [prompt, setPrompt] = useState("");
   const [sending, setSending] = useState(false);
+  const [regeneratingMessageId, setRegeneratingMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [settings, setSettings] = useState<UserSettings | null>(null);
@@ -216,6 +218,38 @@ export default function Home() {
     }
   }
 
+  async function handleRegenerateResponse(messageId: string) {
+    if (sending) return;
+
+    const assistantMessage = messages.find((message) => message.id === messageId);
+    const userMessage = messages
+      .filter((message) => message.role === "user" && message.position < (assistantMessage?.position ?? 0))
+      .at(-1);
+    if (!assistantMessage || !userMessage) return;
+
+    setSending(true);
+    setRegeneratingMessageId(messageId);
+    setMessageError("");
+
+    try {
+      const answer = await askAI(userMessage.content);
+      let updatedMessage = { ...assistantMessage, content: answer };
+
+      if (settings?.save_history !== false && assistantMessage.chat_id !== "temporary") {
+        const accessToken = await getAccessToken();
+        if (!accessToken) return;
+        updatedMessage = await updateMessageContent(messageId, accessToken, answer);
+      }
+
+      setMessages((current) => current.map((message) => message.id === messageId ? updatedMessage : message));
+    } catch (error) {
+      setMessageError(getErrorMessage(error, "Could not regenerate the response."));
+    } finally {
+      setSending(false);
+      setRegeneratingMessageId(null);
+    }
+  }
+
   async function handleSettingChange(
     setting: "dark_mode" | "save_history",
     enabled: boolean,
@@ -324,10 +358,12 @@ export default function Home() {
             prompt={prompt}
             loading={messagesLoading}
             sending={sending}
+            regeneratingMessageId={regeneratingMessageId}
             error={messageError}
             messagesEndRef={messagesEndRef}
             onPromptChange={setPrompt}
             onSubmit={handleSendMessage}
+            onRegenerate={handleRegenerateResponse}
           />
         )}
       </section>

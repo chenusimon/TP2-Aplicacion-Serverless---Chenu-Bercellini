@@ -1,4 +1,4 @@
-import type { FormEvent, KeyboardEvent, RefObject } from "react";
+import { useState, type FormEvent, type KeyboardEvent, type RefObject } from "react";
 import type { Message } from "@/backend/model";
 import { Icon } from "./Icon";
 
@@ -14,10 +14,12 @@ type ConversationPanelProps = {
   prompt: string;
   loading: boolean;
   sending: boolean;
+  regeneratingMessageId: string | null;
   error: string;
   messagesEndRef: RefObject<HTMLDivElement | null>;
   onPromptChange: (prompt: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onRegenerate: (messageId: string) => void;
 };
 
 export function ConversationPanel({
@@ -25,10 +27,12 @@ export function ConversationPanel({
   prompt,
   loading,
   sending,
+  regeneratingMessageId,
   error,
   messagesEndRef,
   onPromptChange,
   onSubmit,
+  onRegenerate,
 }: ConversationPanelProps) {
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Enter" && !event.shiftKey) {
@@ -44,7 +48,13 @@ export function ConversationPanel({
       ) : messages.length === 0 ? (
         <EmptyConversation onSelectSuggestion={onPromptChange} />
       ) : (
-        <MessageList messages={messages} sending={sending} messagesEndRef={messagesEndRef} />
+        <MessageList
+          messages={messages}
+          sending={sending}
+          regeneratingMessageId={regeneratingMessageId}
+          messagesEndRef={messagesEndRef}
+          onRegenerate={onRegenerate}
+        />
       )}
 
       <div className="sticky bottom-0 bg-gradient-to-t from-app-background via-app-background to-transparent px-4 pb-4 pt-8 sm:px-8 sm:pb-6">
@@ -94,10 +104,21 @@ function EmptyConversation({ onSelectSuggestion }: { onSelectSuggestion: (sugges
 type MessageListProps = {
   messages: Message[];
   sending: boolean;
+  regeneratingMessageId: string | null;
   messagesEndRef: RefObject<HTMLDivElement | null>;
+  onRegenerate: (messageId: string) => void;
 };
 
-function MessageList({ messages, sending, messagesEndRef }: MessageListProps) {
+function MessageList({ messages, sending, regeneratingMessageId, messagesEndRef, onRegenerate }: MessageListProps) {
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const latestAssistantId = messages.findLast((message) => message.role === "assistant")?.id;
+
+  async function handleCopy(message: Message) {
+    await navigator.clipboard.writeText(message.content);
+    setCopiedMessageId(message.id);
+    window.setTimeout(() => setCopiedMessageId(null), 1600);
+  }
+
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 space-y-7 px-5 py-10 sm:px-8">
       {messages.map((message) => (
@@ -107,7 +128,32 @@ function MessageList({ messages, sending, messagesEndRef }: MessageListProps) {
           ) : (
             <div className="flex max-w-full items-start gap-3 sm:max-w-[90%]">
               <div className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-xl bg-app-foreground text-xs font-semibold text-app-background">A</div>
-              <div className="whitespace-pre-wrap py-1 text-[15px] leading-7">{message.content}</div>
+              <div className="min-w-0 py-1">
+                <div className="whitespace-pre-wrap text-[15px] leading-7">
+                  {regeneratingMessageId === message.id ? "Regenerating response..." : message.content}
+                </div>
+                <div className="mt-2 flex items-center gap-1 text-app-subtle">
+                  <button
+                    type="button"
+                    onClick={() => void handleCopy(message)}
+                    className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs hover:bg-app-hover hover:text-app-foreground [&_svg]:size-4"
+                  >
+                    <Icon name={copiedMessageId === message.id ? "check" : "copy"} />
+                    {copiedMessageId === message.id ? "Copied" : "Copy"}
+                  </button>
+                  {message.id === latestAssistantId && (
+                    <button
+                      type="button"
+                      onClick={() => onRegenerate(message.id)}
+                      disabled={sending}
+                      className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs hover:bg-app-hover hover:text-app-foreground disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:size-4"
+                    >
+                      <Icon name="refresh" />
+                      Regenerate
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </div>
