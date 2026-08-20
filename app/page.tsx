@@ -4,7 +4,7 @@ import type { FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
-import type { Chat, Message } from "@/backend/model";
+import type { Chat, Message, UpdateUserSettings, UserSettings } from "@/backend/model";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
   askAI,
@@ -14,6 +14,7 @@ import {
   saveMessage,
   updateChatTitle,
 } from "@/lib/api/chat-client";
+import { fetchUserSettings, updateUserSettings } from "@/lib/api/settings-client";
 import { AppHeader } from "./components/AppHeader";
 import { ConversationPanel } from "./components/ConversationPanel";
 import { ProfilePanel } from "./components/ProfilePanel";
@@ -40,9 +41,23 @@ export default function Home() {
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settingsError, setSettingsError] = useState("");
+  const [savingSetting, setSavingSetting] = useState<keyof UpdateUserSettings | null>(null);
+  const darkMode = settings?.dark_mode;
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending]);
+
+  useEffect(() => {
+    if (darkMode === undefined) return;
+
+    const theme = darkMode ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("askly-theme", theme);
+  }, [darkMode]);
 
   useEffect(() => {
     const supabase = getSupabaseClient();
@@ -62,6 +77,11 @@ export default function Home() {
         .then(setChats)
         .catch((error: unknown) => setChatsError(getErrorMessage(error, "Could not load chats.")))
         .finally(() => setChatsLoading(false));
+
+      fetchUserSettings(session.access_token)
+        .then(setSettings)
+        .catch((error: unknown) => setSettingsError(getErrorMessage(error, "Could not load settings.")))
+        .finally(() => setSettingsLoading(false));
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -90,8 +110,14 @@ export default function Home() {
 
   async function handleNewConversation() {
     setActiveView("conversation");
-    setCreatingChat(true);
     setChatsError("");
+    setActiveChatId(null);
+    setMessages([]);
+    setMessageError("");
+
+    if (settings?.save_history === false) return;
+
+    setCreatingChat(true);
 
     try {
       const accessToken = await getAccessToken();
@@ -100,8 +126,6 @@ export default function Home() {
       const newChat = await createChat(accessToken);
       setChats((current) => [newChat, ...current.filter((chat) => chat.id !== newChat.id)]);
       setActiveChatId(newChat.id);
-      setMessages([]);
-      setMessageError("");
     } catch (error) {
       setChatsError(getErrorMessage(error, "Could not create a new chat."));
     } finally {
@@ -138,6 +162,11 @@ export default function Home() {
     setPrompt("");
 
     try {
+      if (settings?.save_history === false) {
+        await sendTemporaryMessage(content);
+        return;
+      }
+
       const accessToken = await getAccessToken();
       if (!accessToken) return;
 
@@ -157,6 +186,48 @@ export default function Home() {
     } finally {
       setSending(false);
     }
+  }
+
+  async function handleSettingChange(
+    setting: "dark_mode" | "save_history",
+    enabled: boolean,
+  ) {
+    if (!settings || savingSetting) return;
+
+    const previousSettings = settings;
+    setSettings({ ...settings, [setting]: enabled });
+    setSavingSetting(setting);
+    setSettingsError("");
+
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        setSettings(previousSettings);
+        return;
+      }
+
+      const updatedSettings = await updateUserSettings(accessToken, { [setting]: enabled });
+      setSettings(updatedSettings);
+
+      if (setting === "save_history") {
+        setActiveChatId(null);
+        setMessages([]);
+        setMessageError("");
+      }
+    } catch (error) {
+      setSettings(previousSettings);
+      setSettingsError(getErrorMessage(error, "Could not update settings."));
+    } finally {
+      setSavingSetting(null);
+    }
+  }
+
+  async function sendTemporaryMessage(content: string) {
+    const nextPosition = getNextMessagePosition(messages);
+    appendMessage(createTemporaryMessage("user", content, nextPosition));
+
+    const answer = await askAI(content);
+    appendMessage(createTemporaryMessage("assistant", answer, nextPosition + 1));
   }
 
   async function getOrCreateActiveChat(accessToken: string) {
@@ -180,13 +251,13 @@ export default function Home() {
   }
 
   if (checkingSession || !user) {
-    return <main className="grid min-h-dvh place-items-center bg-[#f8f8f6] text-sm text-black/45">Loading Askly...</main>;
+    return <main className="grid min-h-dvh place-items-center bg-app-background text-sm text-app-muted">Loading Askly...</main>;
   }
 
   const displayName = user.email?.split("@")[0] ?? "Student";
 
   return (
-    <main className="flex h-dvh overflow-hidden bg-[#f8f8f6] text-[#20201f]">
+    <main className="flex h-dvh overflow-hidden bg-app-background text-app-foreground">
       <Sidebar
         user={user}
         displayName={displayName}
@@ -196,6 +267,7 @@ export default function Home() {
         chatsLoading={chatsLoading}
         chatsError={chatsError}
         creatingChat={creatingChat}
+        historyEnabled={settings?.save_history ?? true}
         onNewConversation={handleNewConversation}
         onSelectChat={handleSelectChat}
         onChangeView={setActiveView}
@@ -204,7 +276,17 @@ export default function Home() {
 
       <section className="flex min-w-0 flex-1 flex-col">
         <AppHeader activeView={activeView} onShowConversation={() => setActiveView("conversation")} />
-        {activeView === "settings" && <SettingsPanel user={user} displayName={displayName} />}
+        {activeView === "settings" && (
+          <SettingsPanel
+            user={user}
+            displayName={displayName}
+            settings={settings}
+            loading={settingsLoading}
+            savingSetting={savingSetting}
+            error={settingsError}
+            onSettingChange={handleSettingChange}
+          />
+        )}
         {activeView === "profile" && <ProfilePanel user={user} displayName={displayName} />}
         {activeView === "conversation" && (
           <ConversationPanel
@@ -231,4 +313,19 @@ function getNextMessagePosition(messages: Message[]) {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
+}
+
+function createTemporaryMessage(
+  role: Message["role"],
+  content: string,
+  position: number,
+): Message {
+  return {
+    id: crypto.randomUUID(),
+    chat_id: "temporary",
+    role,
+    content,
+    position,
+    created_at: new Date().toISOString(),
+  };
 }

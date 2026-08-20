@@ -12,6 +12,7 @@ type SidebarProps = {
   chatsLoading: boolean;
   chatsError: string;
   creatingChat: boolean;
+  historyEnabled: boolean;
   onNewConversation: () => void;
   onSelectChat: (chatId: string) => void;
   onChangeView: (view: AppView) => void;
@@ -27,15 +28,16 @@ export function Sidebar({
   chatsLoading,
   chatsError,
   creatingChat,
+  historyEnabled,
   onNewConversation,
   onSelectChat,
   onChangeView,
   onSignOut,
 }: SidebarProps) {
   return (
-    <aside className="hidden w-72 shrink-0 flex-col border-r border-black/8 bg-[#efefec] p-3 md:flex">
+    <aside className="hidden w-72 shrink-0 flex-col border-r border-app-line bg-app-sidebar p-3 md:flex">
       <div className="flex h-12 items-center gap-3 px-2">
-        <div className="grid size-8 place-items-center rounded-xl bg-[#20201f] text-sm font-semibold text-white">A</div>
+        <div className="grid size-8 place-items-center rounded-xl bg-app-foreground text-sm font-semibold text-app-background">A</div>
         <span className="font-semibold tracking-tight">Askly</span>
       </div>
 
@@ -43,24 +45,25 @@ export function Sidebar({
         type="button"
         onClick={onNewConversation}
         disabled={creatingChat}
-        className="mt-3 flex h-11 items-center gap-3 rounded-xl border border-black/10 bg-white px-3 text-sm font-medium shadow-sm hover:bg-[#fafaf8] disabled:cursor-not-allowed disabled:opacity-50"
+        className="mt-3 flex h-11 items-center gap-3 rounded-xl border border-app-line bg-app-surface px-3 text-sm font-medium shadow-sm hover:bg-app-hover disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Icon name="edit" />
         {creatingChat ? "Creating..." : "New conversation"}
       </button>
 
       <nav className="mt-7 min-h-0 flex-1 overflow-y-auto" aria-label="Chat history">
-        <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-black/40">Recent</p>
+        <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-app-subtle">Recent</p>
         <ChatList
           chats={chats}
           activeChatId={activeChatId}
           loading={chatsLoading}
           error={chatsError}
+          historyEnabled={historyEnabled}
           onSelectChat={onSelectChat}
         />
       </nav>
 
-      <div className="space-y-1 border-t border-black/8 pt-3">
+      <div className="space-y-1 border-t border-app-line pt-3">
         <NavigationButton
           label="Profile"
           icon="user"
@@ -74,12 +77,12 @@ export function Sidebar({
           onClick={() => onChangeView("settings")}
         />
         <div className="flex items-center gap-2 rounded-xl px-3 py-2.5">
-          <div className="grid size-8 shrink-0 place-items-center rounded-full bg-[#d9ddd2] text-[#3b4434]"><Icon name="user" /></div>
+          <div className="grid size-8 shrink-0 place-items-center rounded-full bg-app-avatar text-app-avatar-text"><Icon name="user" /></div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium capitalize">{displayName}</p>
-            <p className="truncate text-xs text-black/45">{user.email}</p>
+            <p className="truncate text-xs text-app-muted">{user.email}</p>
           </div>
-          <button type="button" onClick={onSignOut} className="rounded-lg px-2 py-1 text-xs font-medium text-black/50 hover:bg-black/5 hover:text-black">Log out</button>
+          <button type="button" onClick={onSignOut} className="rounded-lg px-2 py-1 text-xs font-medium text-app-muted hover:bg-app-hover hover:text-app-foreground">Log out</button>
         </div>
       </div>
     </aside>
@@ -91,13 +94,15 @@ type ChatListProps = {
   activeChatId: string | null;
   loading: boolean;
   error: string;
+  historyEnabled: boolean;
   onSelectChat: (chatId: string) => void;
 };
 
-function ChatList({ chats, activeChatId, loading, error, onSelectChat }: ChatListProps) {
-  if (loading) return <p className="px-3 py-2 text-sm text-black/40">Loading chats...</p>;
-  if (error) return <p className="px-3 py-2 text-sm text-red-700/70">{error}</p>;
-  if (chats.length === 0) return <p className="px-3 py-2 text-sm text-black/40">No chats</p>;
+function ChatList({ chats, activeChatId, loading, error, historyEnabled, onSelectChat }: ChatListProps) {
+  if (!historyEnabled) return <p className="px-3 py-2 text-sm text-app-muted">History is turned off</p>;
+  if (loading) return <p className="px-3 py-2 text-sm text-app-muted">Loading chats...</p>;
+  if (error) return <p className="px-3 py-2 text-sm text-app-danger">{error}</p>;
+  if (chats.length === 0) return <p className="px-3 py-2 text-sm text-app-muted">No chats</p>;
 
   return (
     <ul className="space-y-1">
@@ -106,7 +111,7 @@ function ChatList({ chats, activeChatId, loading, error, onSelectChat }: ChatLis
           <button
             type="button"
             onClick={() => onSelectChat(chat.id)}
-            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-black/5 ${activeChatId === chat.id ? "bg-black/[0.055] font-medium" : "text-black/65"}`}
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-app-hover ${activeChatId === chat.id ? "bg-app-active font-medium" : "text-app-muted"}`}
           >
             <Icon name="chat" />
             <span className="truncate">{chat.title || "Untitled chat"}</span>
@@ -130,7 +135,7 @@ function NavigationButton({ label, icon, active, onClick }: NavigationButtonProp
       type="button"
       onClick={onClick}
       aria-current={active ? "page" : undefined}
-      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm hover:bg-black/5 ${active ? "bg-black/[0.055] font-medium text-black" : "text-black/65"}`}
+      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm hover:bg-app-hover ${active ? "bg-app-active font-medium text-app-foreground" : "text-app-muted"}`}
     >
       <Icon name={icon} />
       {label}
