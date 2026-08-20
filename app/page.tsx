@@ -101,8 +101,18 @@ function Icon({ name }: { name: "chat" | "edit" | "settings" | "user" | "send" |
   return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="size-5 shrink-0">{paths[name]}</svg>;
 }
 
+function formatAccountDate(value?: string) {
+  if (!value) return "Not available";
+
+  return new Intl.DateTimeFormat("en", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
 export default function Home() {
   const router = useRouter();
+  const [activeView, setActiveView] = useState<"conversation" | "settings" | "profile">("conversation");
   const [user, setUser] = useState<User | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
   const [chats, setChats] = useState<Chat[]>([]);
@@ -155,6 +165,7 @@ export default function Home() {
   }
 
   async function handleNewConversation() {
+    setActiveView("conversation");
     setCreatingChat(true);
     setChatsError("");
 
@@ -181,6 +192,7 @@ export default function Home() {
   }
 
   async function handleSelectChat(chatId: string) {
+    setActiveView("conversation");
     setActiveChatId(chatId);
     setMessagesLoading(true);
     setMessageError("");
@@ -290,7 +302,8 @@ export default function Home() {
           )}
         </nav>
         <div className="space-y-1 border-t border-black/8 pt-3">
-          <button type="button" className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-black/65 hover:bg-black/5"><Icon name="settings" /> Settings</button>
+          <button type="button" onClick={() => setActiveView("profile")} aria-current={activeView === "profile" ? "page" : undefined} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm hover:bg-black/5 ${activeView === "profile" ? "bg-black/[0.055] font-medium text-black" : "text-black/65"}`}><Icon name="user" /> Profile</button>
+          <button type="button" onClick={() => setActiveView("settings")} aria-current={activeView === "settings" ? "page" : undefined} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm hover:bg-black/5 ${activeView === "settings" ? "bg-black/[0.055] font-medium text-black" : "text-black/65"}`}><Icon name="settings" /> Settings</button>
           <div className="flex items-center gap-2 rounded-xl px-3 py-2.5"><div className="grid size-8 shrink-0 place-items-center rounded-full bg-[#d9ddd2] text-[#3b4434]"><Icon name="user" /></div><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium capitalize">{displayName}</p><p className="truncate text-xs text-black/45">{user.email}</p></div><button type="button" onClick={handleSignOut} className="rounded-lg px-2 py-1 text-xs font-medium text-black/50 hover:bg-black/5 hover:text-black">Log out</button></div>
         </div>
       </aside>
@@ -298,9 +311,84 @@ export default function Home() {
       <section className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-16 shrink-0 items-center justify-between border-b border-black/6 px-4 md:px-6">
           <button type="button" aria-label="Open menu" className="grid size-10 place-items-center rounded-xl hover:bg-black/5 md:hidden"><Icon name="menu" /></button>
-          <button type="button" className="rounded-lg px-2 py-1 text-sm font-medium text-black/65 hover:bg-black/5">Askly <span className="text-black/35">▾</span></button>
-          <button type="button" className="rounded-lg border border-black/10 bg-white px-3 py-1.5 text-sm font-medium shadow-sm hover:bg-black/[0.02]">Share</button>
+          <button type="button" onClick={() => setActiveView("conversation")} className="rounded-lg px-2 py-1 text-sm font-medium text-black/65 hover:bg-black/5">{activeView === "settings" ? "Settings" : activeView === "profile" ? "Profile" : "Askly"} {activeView === "conversation" && <span className="text-black/35">▾</span>}</button>
+          {activeView === "conversation" ? <button type="button" className="rounded-lg border border-black/10 bg-white px-3 py-1.5 text-sm font-medium shadow-sm hover:bg-black/[0.02]">Share</button> : <div className="w-16" aria-hidden="true" />}
         </header>
+        {activeView === "settings" ? (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto w-full max-w-3xl px-5 py-10 sm:px-8 sm:py-14">
+              <div className="mb-9">
+                <p className="text-sm font-medium text-black/45">Preferences</p>
+                <h1 className="mt-1 text-3xl font-semibold tracking-[-0.035em]">Settings</h1>
+                <p className="mt-2 text-sm leading-6 text-black/50">Customize how Askly looks and handles your conversations.</p>
+              </div>
+
+              <div className="overflow-hidden rounded-2xl border border-black/8 bg-white shadow-sm">
+                <div className="flex items-center justify-between gap-6 border-b border-black/8 px-5 py-5 sm:px-6">
+                  <div>
+                    <h2 className="text-sm font-semibold">Dark mode</h2>
+                    <p className="mt-1 text-sm text-black/45">Use a darker appearance for the interface.</p>
+                  </div>
+                  <button type="button" aria-label="Toggle dark mode" aria-pressed="false" className="relative h-7 w-12 shrink-0 rounded-full bg-black/15 transition-colors">
+                    <span className="absolute left-1 top-1 size-5 rounded-full bg-white shadow-sm" />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between gap-6 px-5 py-5 sm:px-6">
+                  <div>
+                    <h2 className="text-sm font-semibold">Save chat history</h2>
+                    <p className="mt-1 text-sm text-black/45">Keep your conversations available in the sidebar.</p>
+                  </div>
+                  <button type="button" aria-label="Toggle chat history" aria-pressed="true" className="relative h-7 w-12 shrink-0 rounded-full bg-[#20201f] transition-colors">
+                    <span className="absolute right-1 top-1 size-5 rounded-full bg-white shadow-sm" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-6 overflow-hidden rounded-2xl border border-black/8 bg-white shadow-sm">
+                <div className="px-5 py-5 sm:px-6">
+                  <h2 className="text-sm font-semibold">Account</h2>
+                  <div className="mt-4 flex items-center gap-3">
+                    <div className="grid size-10 shrink-0 place-items-center rounded-full bg-[#d9ddd2] text-[#3b4434]"><Icon name="user" /></div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium capitalize">{displayName}</p>
+                      <p className="truncate text-sm text-black/45">{user.email}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <p className="mt-5 text-xs text-black/35">These controls are visual placeholders for now.</p>
+            </div>
+          </div>
+        ) : activeView === "profile" ? (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto w-full max-w-3xl px-5 py-10 sm:px-8 sm:py-14">
+              <div className="mb-9">
+                <p className="text-sm font-medium text-black/45">Your account</p>
+                <h1 className="mt-1 text-3xl font-semibold tracking-[-0.035em]">Profile</h1>
+                <p className="mt-2 text-sm leading-6 text-black/50">View the information connected to your Askly account.</p>
+              </div>
+
+              <div className="rounded-2xl border border-black/8 bg-white p-5 shadow-sm sm:p-6">
+                <div className="flex items-center gap-4 border-b border-black/8 pb-6">
+                  <div className="grid size-14 shrink-0 place-items-center rounded-full bg-[#d9ddd2] text-[#3b4434]"><Icon name="user" /></div>
+                  <div className="min-w-0">
+                    <h2 className="truncate text-xl font-semibold capitalize">{displayName}</h2>
+                    <p className="mt-1 truncate text-sm text-black/45">{user.email}</p>
+                  </div>
+                </div>
+
+                <dl className="divide-y divide-black/8">
+                  <div className="grid gap-1 py-5 sm:grid-cols-[180px_1fr] sm:gap-6"><dt className="text-sm text-black/45">Email address</dt><dd className="break-all text-sm font-medium">{user.email}</dd></div>
+                  <div className="grid gap-1 py-5 sm:grid-cols-[180px_1fr] sm:gap-6"><dt className="text-sm text-black/45">Account created</dt><dd className="text-sm font-medium">{formatAccountDate(user.created_at)}</dd></div>
+                  <div className="grid gap-1 py-5 sm:grid-cols-[180px_1fr] sm:gap-6"><dt className="text-sm text-black/45">Last sign in</dt><dd className="text-sm font-medium">{formatAccountDate(user.last_sign_in_at)}</dd></div>
+                  <div className="grid gap-1 py-5 sm:grid-cols-[180px_1fr] sm:gap-6"><dt className="text-sm text-black/45">Sign-in method</dt><dd className="text-sm font-medium capitalize">{user.app_metadata.provider ?? "Email"}</dd></div>
+                  <div className="grid gap-1 pt-5 sm:grid-cols-[180px_1fr] sm:gap-6"><dt className="text-sm text-black/45">User ID</dt><dd className="break-all font-mono text-xs text-black/65">{user.id}</dd></div>
+                </dl>
+              </div>
+            </div>
+          </div>
+        ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           {messagesLoading ? (
             <div className="grid flex-1 place-items-center text-sm text-black/40">Loading messages...</div>
@@ -337,6 +425,7 @@ export default function Home() {
             </div>
           </div>
         </div>
+        )}
       </section>
     </main>
   );
