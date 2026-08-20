@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import type { Chat } from "@/backend/model";
 import type { AppView } from "@/app/types";
@@ -34,6 +35,8 @@ export function Sidebar({
   onChangeView,
   onSignOut,
 }: SidebarProps) {
+  const [searchQuery, setSearchQuery] = useState("");
+
   return (
     <aside className="hidden w-72 shrink-0 flex-col border-r border-app-line bg-app-sidebar p-3 md:flex">
       <div className="flex h-12 items-center gap-3 px-2">
@@ -53,8 +56,22 @@ export function Sidebar({
 
       <nav className="mt-7 min-h-0 flex-1 overflow-y-auto" aria-label="Chat history">
         <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-app-subtle">Recent</p>
+        {historyEnabled && (
+          <label className="mb-3 flex h-10 items-center gap-2 rounded-xl border border-app-line bg-app-surface px-3 text-app-muted focus-within:border-app-subtle focus-within:text-app-foreground">
+            <span className="sr-only">Search chat history</span>
+            <Icon name="search" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search chats"
+              className="min-w-0 flex-1 bg-transparent text-sm text-app-foreground outline-none placeholder:text-app-subtle"
+            />
+          </label>
+        )}
         <ChatList
           chats={chats}
+          searchQuery={searchQuery}
           activeChatId={activeChatId}
           loading={chatsLoading}
           error={chatsError}
@@ -91,6 +108,7 @@ export function Sidebar({
 
 type ChatListProps = {
   chats: Chat[];
+  searchQuery: string;
   activeChatId: string | null;
   loading: boolean;
   error: string;
@@ -98,15 +116,24 @@ type ChatListProps = {
   onSelectChat: (chatId: string) => void;
 };
 
-function ChatList({ chats, activeChatId, loading, error, historyEnabled, onSelectChat }: ChatListProps) {
+function ChatList({ chats, searchQuery, activeChatId, loading, error, historyEnabled, onSelectChat }: ChatListProps) {
   if (!historyEnabled) return <p className="px-3 py-2 text-sm text-app-muted">History is turned off</p>;
   if (loading) return <p className="px-3 py-2 text-sm text-app-muted">Loading chats...</p>;
   if (error) return <p className="px-3 py-2 text-sm text-app-danger">{error}</p>;
   if (chats.length === 0) return <p className="px-3 py-2 text-sm text-app-muted">No chats</p>;
 
+  const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
+  const filteredChats = normalizedQuery
+    ? chats.filter((chat) => (chat.title || "Untitled chat").toLocaleLowerCase().includes(normalizedQuery))
+    : chats;
+
+  if (filteredChats.length === 0) {
+    return <p className="px-3 py-2 text-sm text-app-muted">No matching chats</p>;
+  }
+
   return (
     <ul className="space-y-1">
-      {chats.map((chat) => (
+      {filteredChats.map((chat) => (
         <li key={chat.id}>
           <button
             type="button"

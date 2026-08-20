@@ -6,6 +6,7 @@ export type IconName =
   | "settings"
   | "user"
   | "send"
+  | "search"
   | "menu";
 
 const iconPaths: Record<IconName, ReactNode> = {
@@ -24,6 +25,12 @@ const iconPaths: Record<IconName, ReactNode> = {
     </>
   ),
   send: <path d="m22 2-7 20-4-9-9-4 20-7Zm-11 11 4-4" />,
+  search: (
+    <>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-4-4" />
+    </>
+  ),
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,
 };
 
