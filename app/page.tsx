@@ -36,6 +36,7 @@ export default function Home() {
   const [chatsError, setChatsError] = useState("");
   const [creatingChat, setCreatingChat] = useState(false);
   const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
+  const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
@@ -179,6 +180,35 @@ export default function Home() {
       setChatsError(getErrorMessage(error, "Could not delete the conversation."));
     } finally {
       setDeletingChatId(null);
+    }
+  }
+
+  async function handleRenameChat(chatId: string, title: string) {
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) return false;
+
+    setRenamingChatId(chatId);
+    setChatsError("");
+
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) return false;
+
+      await updateChatTitle(chatId, accessToken, trimmedTitle);
+      setChats((current) => {
+        const renamedChat = current.find((chat) => chat.id === chatId);
+        if (!renamedChat) return current;
+        return [
+          { ...renamedChat, title: trimmedTitle, updated_at: new Date().toISOString() },
+          ...current.filter((chat) => chat.id !== chatId),
+        ];
+      });
+      return true;
+    } catch (error) {
+      setChatsError(getErrorMessage(error, "Could not rename the conversation."));
+      return false;
+    } finally {
+      setRenamingChatId(null);
     }
   }
 
@@ -330,10 +360,12 @@ export default function Home() {
         chatsError={chatsError}
         creatingChat={creatingChat}
         deletingChatId={deletingChatId}
+        renamingChatId={renamingChatId}
         historyEnabled={settings?.save_history ?? true}
         onNewConversation={handleNewConversation}
         onSelectChat={handleSelectChat}
         onDeleteChat={handleDeleteChat}
+        onRenameChat={handleRenameChat}
         onChangeView={setActiveView}
         onSignOut={handleSignOut}
       />
