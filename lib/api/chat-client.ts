@@ -95,6 +95,39 @@ export async function updateChatTitle(
   }
 }
 
+export async function deleteChat(chatId: string, accessToken: string): Promise<void> {
+  const response = await fetch(`/api/chats/${chatId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!response.ok) {
+    throw new Error("Could not delete the conversation.");
+  }
+}
+
+export async function updateMessageContent(
+  messageId: string,
+  accessToken: string,
+  content: string,
+): Promise<Message> {
+  const response = await fetch(`/api/messages/${messageId}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ content }),
+  });
+  const result = (await response.json()) as ApiResult<Message>;
+
+  if (!response.ok || !result.data) {
+    throw new Error(result.error ?? "Could not regenerate the response.");
+  }
+
+  return result.data;
+}
+
 export async function askAI(prompt: string): Promise<string> {
   const response = await fetch("/api/chat", {
     method: "POST",

@@ -9,10 +9,12 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import {
   askAI,
   createChat,
+  deleteChat,
   fetchChats,
   fetchMessages,
   saveMessage,
   updateChatTitle,
+  updateMessageContent,
 } from "@/lib/api/chat-client";
 import { fetchUserSettings, updateUserSettings } from "@/lib/api/settings-client";
 import { AppHeader } from "./components/AppHeader";
@@ -33,12 +35,14 @@ export default function Home() {
   const [chatsLoading, setChatsLoading] = useState(true);
   const [chatsError, setChatsError] = useState("");
   const [creatingChat, setCreatingChat] = useState(false);
+  const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messageError, setMessageError] = useState("");
   const [prompt, setPrompt] = useState("");
   const [sending, setSending] = useState(false);
+  const [regeneratingMessageId, setRegeneratingMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [settings, setSettings] = useState<UserSettings | null>(null);
@@ -152,6 +156,32 @@ export default function Home() {
     }
   }
 
+  async function handleDeleteChat(chat: Chat) {
+    const title = chat.title || "Untitled chat";
+    if (!window.confirm(`Delete “${title}”? This cannot be undone.`)) return;
+
+    setDeletingChatId(chat.id);
+    setChatsError("");
+
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) return;
+
+      await deleteChat(chat.id, accessToken);
+      setChats((current) => current.filter((currentChat) => currentChat.id !== chat.id));
+
+      if (activeChatId === chat.id) {
+        setActiveChatId(null);
+        setMessages([]);
+        setMessageError("");
+      }
+    } catch (error) {
+      setChatsError(getErrorMessage(error, "Could not delete the conversation."));
+    } finally {
+      setDeletingChatId(null);
+    }
+  }
+
   async function handleSendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const content = prompt.trim();
@@ -185,6 +215,38 @@ export default function Home() {
       setPrompt(content);
     } finally {
       setSending(false);
+    }
+  }
+
+  async function handleRegenerateResponse(messageId: string) {
+    if (sending) return;
+
+    const assistantMessage = messages.find((message) => message.id === messageId);
+    const userMessage = messages
+      .filter((message) => message.role === "user" && message.position < (assistantMessage?.position ?? 0))
+      .at(-1);
+    if (!assistantMessage || !userMessage) return;
+
+    setSending(true);
+    setRegeneratingMessageId(messageId);
+    setMessageError("");
+
+    try {
+      const answer = await askAI(userMessage.content);
+      let updatedMessage = { ...assistantMessage, content: answer };
+
+      if (settings?.save_history !== false && assistantMessage.chat_id !== "temporary") {
+        const accessToken = await getAccessToken();
+        if (!accessToken) return;
+        updatedMessage = await updateMessageContent(messageId, accessToken, answer);
+      }
+
+      setMessages((current) => current.map((message) => message.id === messageId ? updatedMessage : message));
+    } catch (error) {
+      setMessageError(getErrorMessage(error, "Could not regenerate the response."));
+    } finally {
+      setSending(false);
+      setRegeneratingMessageId(null);
     }
   }
 
@@ -267,9 +329,11 @@ export default function Home() {
         chatsLoading={chatsLoading}
         chatsError={chatsError}
         creatingChat={creatingChat}
+        deletingChatId={deletingChatId}
         historyEnabled={settings?.save_history ?? true}
         onNewConversation={handleNewConversation}
         onSelectChat={handleSelectChat}
+        onDeleteChat={handleDeleteChat}
         onChangeView={setActiveView}
         onSignOut={handleSignOut}
       />
@@ -294,10 +358,12 @@ export default function Home() {
             prompt={prompt}
             loading={messagesLoading}
             sending={sending}
+            regeneratingMessageId={regeneratingMessageId}
             error={messageError}
             messagesEndRef={messagesEndRef}
             onPromptChange={setPrompt}
             onSubmit={handleSendMessage}
+            onRegenerate={handleRegenerateResponse}
           />
         )}
       </section>
