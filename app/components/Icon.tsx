@@ -11,6 +11,7 @@ export type IconName =
   | "copy"
   | "check"
   | "refresh"
+  | "sliders"
   | "menu";
 
 const iconPaths: Record<IconName, ReactNode> = {
@@ -52,6 +53,13 @@ const iconPaths: Record<IconName, ReactNode> = {
     <>
       <path d="M20 7v5h-5" />
       <path d="M4 17v-5h5M6.1 9a7 7 0 0 1 11.4-2L20 9M4 15l2.5 2a7 7 0 0 0 11.4-2" />
+    </>
+  ),
+  sliders: (
+    <>
+      <path d="M4 7h4M12 7h8M4 17h8M16 17h4" />
+      <circle cx="10" cy="7" r="2" />
+      <circle cx="14" cy="17" r="2" />
     </>
   ),
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,

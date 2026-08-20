@@ -1,1 +1,1 @@
-export type AppView = "conversation" | "settings" | "profile";
+export type AppView = "conversation" | "preferences" | "settings" | "profile";

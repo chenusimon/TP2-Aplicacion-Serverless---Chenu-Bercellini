@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import type { User } from "@supabase/supabase-js";
 import type { Chat } from "@/backend/model";
 import type { AppView } from "@/app/types";
-import { Icon } from "./Icon";
+import { Icon, type IconName } from "./Icon";
 
 type SidebarProps = {
   user: User;
@@ -93,6 +93,12 @@ export function Sidebar({
       </nav>
 
       <div className="space-y-1 border-t border-app-line pt-3">
+        <NavigationButton
+          label="AI Preferences"
+          icon="sliders"
+          active={activeView === "preferences"}
+          onClick={() => onChangeView("preferences")}
+        />
         <NavigationButton
           label="Profile"
           icon="user"
@@ -251,7 +257,7 @@ function formatChatTimestamp(chat: Chat) {
 
 type NavigationButtonProps = {
   label: string;
-  icon: "user" | "settings";
+  icon: IconName;
   active: boolean;
   onClick: () => void;
 };

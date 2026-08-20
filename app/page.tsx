@@ -20,6 +20,7 @@ import { fetchUserSettings, updateUserSettings } from "@/lib/api/settings-client
 import { AppHeader } from "./components/AppHeader";
 import { ConversationPanel } from "./components/ConversationPanel";
 import { ProfilePanel } from "./components/ProfilePanel";
+import { PreferencesPanel } from "./components/PreferencesPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Sidebar } from "./components/Sidebar";
 import type { AppView } from "./types";
@@ -384,6 +385,7 @@ export default function Home() {
           />
         )}
         {activeView === "profile" && <ProfilePanel user={user} displayName={displayName} />}
+        {activeView === "preferences" && <PreferencesPanel />}
         {activeView === "conversation" && (
           <ConversationPanel
             messages={messages}

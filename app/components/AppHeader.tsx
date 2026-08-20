@@ -3,6 +3,7 @@ import { Icon } from "./Icon";
 
 const viewTitles: Record<AppView, string> = {
   conversation: "Askly",
+  preferences: "AI Preferences",
   settings: "Settings",
   profile: "Profile",
 };
