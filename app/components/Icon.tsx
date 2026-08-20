@@ -7,6 +7,10 @@ export type IconName =
   | "user"
   | "send"
   | "search"
+  | "trash"
+  | "copy"
+  | "check"
+  | "refresh"
   | "menu";
 
 const iconPaths: Record<IconName, ReactNode> = {
@@ -29,6 +33,25 @@ const iconPaths: Record<IconName, ReactNode> = {
     <>
       <circle cx="11" cy="11" r="7" />
       <path d="m20 20-4-4" />
+    </>
+  ),
+  trash: (
+    <>
+      <path d="M4 7h16M9 7V4h6v3m3 0-1 14H7L6 7" />
+      <path d="M10 11v6M14 11v6" />
+    </>
+  ),
+  copy: (
+    <>
+      <rect x="8" y="8" width="12" height="12" rx="2" />
+      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+    </>
+  ),
+  check: <path d="m5 12 4 4L19 6" />,
+  refresh: (
+    <>
+      <path d="M20 7v5h-5" />
+      <path d="M4 17v-5h5M6.1 9a7 7 0 0 1 11.4-2L20 9M4 15l2.5 2a7 7 0 0 0 11.4-2" />
     </>
   ),
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,
