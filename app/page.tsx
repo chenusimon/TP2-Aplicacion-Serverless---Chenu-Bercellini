@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import type { Chat } from "@/backend/model";
+import type { Chat, Message, MessageRole } from "@/backend/model";
 
 async function fetchChats(accessToken: string): Promise<Chat[]> {
   const response = await fetch("/api/chats", {
@@ -17,6 +17,76 @@ async function fetchChats(accessToken: string): Promise<Chat[]> {
   }
 
   return result.data ?? [];
+}
+
+async function createChat(accessToken: string): Promise<Chat> {
+  const response = await fetch("/api/chats", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ title: null }),
+  });
+  const result = (await response.json()) as { data?: Chat; error?: string };
+
+  if (!response.ok || !result.data) {
+    throw new Error(result.error ?? "Could not create a new chat.");
+  }
+
+  return result.data;
+}
+
+async function fetchMessages(chatId: string, accessToken: string): Promise<Message[]> {
+  const response = await fetch(`/api/chats/${chatId}/messages`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const result = (await response.json()) as { data?: Message[]; error?: string };
+  if (!response.ok) throw new Error(result.error ?? "Could not load messages.");
+  return (result.data ?? []).sort((a, b) => a.position - b.position);
+}
+
+async function saveMessage(
+  chatId: string,
+  accessToken: string,
+  role: MessageRole,
+  content: string,
+  position: number,
+): Promise<Message> {
+  const response = await fetch(`/api/chats/${chatId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ role, content, position }),
+  });
+  const result = (await response.json()) as { data?: Message; error?: string };
+  if (!response.ok || !result.data) throw new Error(result.error ?? "Could not save message.");
+  return result.data;
+}
+
+async function askAI(prompt: string): Promise<string> {
+  const response = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+  });
+  const result = (await response.json()) as { response?: string; error?: string };
+  if (!response.ok || !result.response) throw new Error(result.error ?? "The AI could not answer.");
+  return result.response;
+}
+
+async function updateChatTitle(chatId: string, accessToken: string, title: string) {
+  const response = await fetch(`/api/chats/${chatId}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ title }),
+  });
+  if (!response.ok) throw new Error("Could not update the chat title.");
 }
 
 function Icon({ name }: { name: "chat" | "edit" | "settings" | "user" | "send" | "menu" }) {
@@ -38,6 +108,18 @@ export default function Home() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [chatsLoading, setChatsLoading] = useState(true);
   const [chatsError, setChatsError] = useState("");
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [creatingChat, setCreatingChat] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [messageError, setMessageError] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [sending, setSending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, sending]);
 
   useEffect(() => {
     const supabase = getSupabaseClient();
@@ -72,6 +154,109 @@ export default function Home() {
     router.replace("/login");
   }
 
+  async function handleNewConversation() {
+    setCreatingChat(true);
+    setChatsError("");
+
+    try {
+      const { data } = await getSupabaseClient().auth.getSession();
+      if (!data.session) {
+        router.replace("/login");
+        return;
+      }
+
+      const newChat = await createChat(data.session.access_token);
+      setChats((currentChats) => [
+        newChat,
+        ...currentChats.filter((chat) => chat.id !== newChat.id),
+      ]);
+      setActiveChatId(newChat.id);
+      setMessages([]);
+      setMessageError("");
+    } catch (error) {
+      setChatsError(error instanceof Error ? error.message : "Could not create a new chat.");
+    } finally {
+      setCreatingChat(false);
+    }
+  }
+
+  async function handleSelectChat(chatId: string) {
+    setActiveChatId(chatId);
+    setMessagesLoading(true);
+    setMessageError("");
+
+    try {
+      const { data } = await getSupabaseClient().auth.getSession();
+      if (!data.session) {
+        router.replace("/login");
+        return;
+      }
+      setMessages(await fetchMessages(chatId, data.session.access_token));
+    } catch (error) {
+      setMessages([]);
+      setMessageError(error instanceof Error ? error.message : "Could not load messages.");
+    } finally {
+      setMessagesLoading(false);
+    }
+  }
+
+  async function handleSendMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const content = prompt.trim();
+    if (!content || sending) return;
+
+    setSending(true);
+    setMessageError("");
+    setPrompt("");
+
+    try {
+      const { data } = await getSupabaseClient().auth.getSession();
+      if (!data.session) {
+        router.replace("/login");
+        return;
+      }
+
+      const accessToken = data.session.access_token;
+      let chatId = activeChatId;
+      let activeChat = chats.find((chat) => chat.id === chatId);
+
+      if (!chatId) {
+        activeChat = await createChat(accessToken);
+        chatId = activeChat.id;
+        setActiveChatId(chatId);
+        setChats((currentChats) => [activeChat as Chat, ...currentChats]);
+      }
+
+      const nextPosition = messages.length === 0
+        ? 0
+        : Math.max(...messages.map((message) => message.position)) + 1;
+      const userMessage = await saveMessage(chatId, accessToken, "user", content, nextPosition);
+      setMessages((currentMessages) => [...currentMessages, userMessage].sort((a, b) => a.position - b.position));
+
+      if (!activeChat?.title) {
+        const title = content.length > 48 ? `${content.slice(0, 48)}…` : content;
+        updateChatTitle(chatId, accessToken, title).catch(console.error);
+        setChats((currentChats) => currentChats.map((chat) => chat.id === chatId ? { ...chat, title } : chat));
+      }
+
+      const answer = await askAI(content);
+      const assistantMessage = await saveMessage(chatId, accessToken, "assistant", answer, nextPosition + 1);
+      setMessages((currentMessages) => [...currentMessages, assistantMessage].sort((a, b) => a.position - b.position));
+    } catch (error) {
+      setMessageError(error instanceof Error ? error.message : "Could not send the message.");
+      setPrompt(content);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      event.currentTarget.form?.requestSubmit();
+    }
+  }
+
   if (checkingSession || !user) {
     return <main className="grid min-h-dvh place-items-center bg-[#f8f8f6] text-sm text-black/45">Loading Askly...</main>;
   }
@@ -82,7 +267,7 @@ export default function Home() {
     <main className="flex h-dvh overflow-hidden bg-[#f8f8f6] text-[#20201f]">
       <aside className="hidden w-72 shrink-0 flex-col border-r border-black/8 bg-[#efefec] p-3 md:flex">
         <div className="flex h-12 items-center gap-3 px-2"><div className="grid size-8 place-items-center rounded-xl bg-[#20201f] text-sm font-semibold text-white">A</div><span className="font-semibold tracking-tight">Askly</span></div>
-        <button type="button" className="mt-3 flex h-11 items-center gap-3 rounded-xl border border-black/10 bg-white px-3 text-sm font-medium shadow-sm hover:bg-[#fafaf8]"><Icon name="edit" /> New conversation</button>
+        <button type="button" onClick={handleNewConversation} disabled={creatingChat} className="mt-3 flex h-11 items-center gap-3 rounded-xl border border-black/10 bg-white px-3 text-sm font-medium shadow-sm hover:bg-[#fafaf8] disabled:cursor-not-allowed disabled:opacity-50"><Icon name="edit" /> {creatingChat ? "Creating..." : "New conversation"}</button>
         <nav className="mt-7 min-h-0 flex-1 overflow-y-auto" aria-label="Chat history">
           <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-black/40">Recent</p>
           {chatsLoading ? (
@@ -93,9 +278,9 @@ export default function Home() {
             <p className="px-3 py-2 text-sm text-black/40">No chats</p>
           ) : (
             <ul className="space-y-1">
-              {chats.map((chat, index) => (
+              {chats.map((chat) => (
                 <li key={chat.id}>
-                  <button type="button" className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-black/5 ${index === 0 ? "bg-black/[0.055] font-medium" : "text-black/65"}`}>
+                  <button type="button" onClick={() => handleSelectChat(chat.id)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-black/5 ${activeChatId === chat.id ? "bg-black/[0.055] font-medium" : "text-black/65"}`}>
                     <Icon name="chat" />
                     <span className="truncate">{chat.title || "Untitled chat"}</span>
                   </button>
@@ -117,12 +302,39 @@ export default function Home() {
           <button type="button" className="rounded-lg border border-black/10 bg-white px-3 py-1.5 text-sm font-medium shadow-sm hover:bg-black/[0.02]">Share</button>
         </header>
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-5 py-12 sm:px-8">
-            <div className="mb-10 text-center"><div className="mx-auto mb-5 grid size-12 place-items-center rounded-2xl bg-[#20201f] text-lg font-semibold text-white shadow-lg shadow-black/10">A</div><h1 className="text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">What can I help you with?</h1><p className="mx-auto mt-3 max-w-md text-sm leading-6 text-black/50">Start a new conversation, ask a question, or continue one of your recent chats.</p></div>
-            <div className="grid gap-3 sm:grid-cols-2">{["Explain a difficult topic", "Help me brainstorm ideas", "Review some code", "Create a study plan"].map((prompt) => <button key={prompt} type="button" className="rounded-2xl border border-black/8 bg-white p-4 text-left text-sm text-black/65 shadow-sm transition-all hover:-translate-y-0.5 hover:border-black/15 hover:text-black">{prompt}</button>)}</div>
-          </div>
+          {messagesLoading ? (
+            <div className="grid flex-1 place-items-center text-sm text-black/40">Loading messages...</div>
+          ) : messages.length === 0 ? (
+            <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-5 py-12 sm:px-8">
+              <div className="mb-10 text-center"><div className="mx-auto mb-5 grid size-12 place-items-center rounded-2xl bg-[#20201f] text-lg font-semibold text-white shadow-lg shadow-black/10">A</div><h1 className="text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">What can I help you with?</h1><p className="mx-auto mt-3 max-w-md text-sm leading-6 text-black/50">Start a new conversation, ask a question, or continue one of your recent chats.</p></div>
+              <div className="grid gap-3 sm:grid-cols-2">{["Explain a difficult topic", "Help me brainstorm ideas", "Review some code", "Create a study plan"].map((suggestion) => <button key={suggestion} type="button" onClick={() => setPrompt(suggestion)} className="rounded-2xl border border-black/8 bg-white p-4 text-left text-sm text-black/65 shadow-sm transition-all hover:-translate-y-0.5 hover:border-black/15 hover:text-black">{suggestion}</button>)}</div>
+            </div>
+          ) : (
+            <div className="mx-auto w-full max-w-3xl flex-1 space-y-7 px-5 py-10 sm:px-8">
+              {messages.map((message) => (
+                <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                  {message.role === "user" ? (
+                    <div className="max-w-[85%] whitespace-pre-wrap rounded-3xl rounded-br-lg bg-[#e7e7e2] px-4 py-3 text-[15px] leading-6 sm:max-w-[75%]">{message.content}</div>
+                  ) : (
+                    <div className="flex max-w-full items-start gap-3 sm:max-w-[90%]">
+                      <div className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-xl bg-[#20201f] text-xs font-semibold text-white">A</div>
+                      <div className="whitespace-pre-wrap py-1 text-[15px] leading-7">{message.content}</div>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {sending && messages.at(-1)?.role === "user" && (
+                <div className="flex items-start gap-3 text-black/45"><div className="grid size-8 place-items-center rounded-xl bg-[#20201f] text-xs font-semibold text-white">A</div><p className="py-1 text-sm">Thinking...</p></div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
           <div className="sticky bottom-0 bg-gradient-to-t from-[#f8f8f6] via-[#f8f8f6] to-transparent px-4 pb-4 pt-8 sm:px-8 sm:pb-6">
-            <div className="mx-auto max-w-3xl"><div className="flex min-h-16 items-end gap-3 rounded-[22px] border border-black/10 bg-white p-2 pl-5 shadow-[0_8px_30px_rgba(0,0,0,0.07)]"><textarea aria-label="Message" placeholder="Message Askly" rows={1} className="max-h-40 min-h-11 flex-1 resize-none bg-transparent py-3 text-[15px] leading-5 outline-none placeholder:text-black/35" /><button type="button" aria-label="Send message" className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#20201f] text-white hover:scale-[1.03]"><Icon name="send" /></button></div><p className="mt-2 text-center text-[11px] text-black/35">Askly can make mistakes. Check important information.</p></div>
+            <div className="mx-auto max-w-3xl">
+              {messageError && <p role="alert" className="mb-2 text-center text-sm text-red-700">{messageError}</p>}
+              <form onSubmit={handleSendMessage} className="flex min-h-16 items-end gap-3 rounded-[22px] border border-black/10 bg-white p-2 pl-5 shadow-[0_8px_30px_rgba(0,0,0,0.07)]"><textarea aria-label="Message" placeholder="Message Askly" rows={1} value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={handleComposerKeyDown} disabled={sending || messagesLoading} className="max-h-40 min-h-11 flex-1 resize-none bg-transparent py-3 text-[15px] leading-5 outline-none placeholder:text-black/35 disabled:opacity-50" /><button type="submit" aria-label="Send message" disabled={sending || !prompt.trim()} className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#20201f] text-white hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-40"><Icon name="send" /></button></form>
+              <p className="mt-2 text-center text-[11px] text-black/35">Askly can make mistakes. Check important information.</p>
+            </div>
           </div>
         </div>
       </section>
