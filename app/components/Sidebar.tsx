@@ -13,9 +13,11 @@ type SidebarProps = {
   chatsLoading: boolean;
   chatsError: string;
   creatingChat: boolean;
+  deletingChatId: string | null;
   historyEnabled: boolean;
   onNewConversation: () => void;
   onSelectChat: (chatId: string) => void;
+  onDeleteChat: (chat: Chat) => void;
   onChangeView: (view: AppView) => void;
   onSignOut: () => void;
 };
@@ -29,9 +31,11 @@ export function Sidebar({
   chatsLoading,
   chatsError,
   creatingChat,
+  deletingChatId,
   historyEnabled,
   onNewConversation,
   onSelectChat,
+  onDeleteChat,
   onChangeView,
   onSignOut,
 }: SidebarProps) {
@@ -76,7 +80,9 @@ export function Sidebar({
           loading={chatsLoading}
           error={chatsError}
           historyEnabled={historyEnabled}
+          deletingChatId={deletingChatId}
           onSelectChat={onSelectChat}
+          onDeleteChat={onDeleteChat}
         />
       </nav>
 
@@ -113,10 +119,12 @@ type ChatListProps = {
   loading: boolean;
   error: string;
   historyEnabled: boolean;
+  deletingChatId: string | null;
   onSelectChat: (chatId: string) => void;
+  onDeleteChat: (chat: Chat) => void;
 };
 
-function ChatList({ chats, searchQuery, activeChatId, loading, error, historyEnabled, onSelectChat }: ChatListProps) {
+function ChatList({ chats, searchQuery, activeChatId, loading, error, historyEnabled, deletingChatId, onSelectChat, onDeleteChat }: ChatListProps) {
   if (!historyEnabled) return <p className="px-3 py-2 text-sm text-app-muted">History is turned off</p>;
   if (loading) return <p className="px-3 py-2 text-sm text-app-muted">Loading chats...</p>;
   if (error) return <p className="px-3 py-2 text-sm text-app-danger">{error}</p>;
@@ -134,14 +142,24 @@ function ChatList({ chats, searchQuery, activeChatId, loading, error, historyEna
   return (
     <ul className="space-y-1">
       {filteredChats.map((chat) => (
-        <li key={chat.id}>
+        <li key={chat.id} className="group relative">
           <button
             type="button"
             onClick={() => onSelectChat(chat.id)}
-            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-app-hover ${activeChatId === chat.id ? "bg-app-active font-medium" : "text-app-muted"}`}
+            className={`flex w-full items-center gap-3 rounded-xl py-2.5 pl-3 pr-10 text-left text-sm hover:bg-app-hover ${activeChatId === chat.id ? "bg-app-active font-medium" : "text-app-muted"}`}
           >
             <Icon name="chat" />
             <span className="truncate">{chat.title || "Untitled chat"}</span>
+          </button>
+          <button
+            type="button"
+            aria-label={`Delete ${chat.title || "Untitled chat"}`}
+            title="Delete conversation"
+            disabled={deletingChatId === chat.id}
+            onClick={() => onDeleteChat(chat)}
+            className="absolute right-2 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-lg text-app-subtle opacity-0 hover:bg-app-surface hover:text-app-danger focus:opacity-100 group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:size-4"
+          >
+            <Icon name="trash" />
           </button>
         </li>
       ))}

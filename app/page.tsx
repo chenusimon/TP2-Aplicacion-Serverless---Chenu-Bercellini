@@ -9,6 +9,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import {
   askAI,
   createChat,
+  deleteChat,
   fetchChats,
   fetchMessages,
   saveMessage,
@@ -33,6 +34,7 @@ export default function Home() {
   const [chatsLoading, setChatsLoading] = useState(true);
   const [chatsError, setChatsError] = useState("");
   const [creatingChat, setCreatingChat] = useState(false);
+  const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
@@ -152,6 +154,32 @@ export default function Home() {
     }
   }
 
+  async function handleDeleteChat(chat: Chat) {
+    const title = chat.title || "Untitled chat";
+    if (!window.confirm(`Delete “${title}”? This cannot be undone.`)) return;
+
+    setDeletingChatId(chat.id);
+    setChatsError("");
+
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) return;
+
+      await deleteChat(chat.id, accessToken);
+      setChats((current) => current.filter((currentChat) => currentChat.id !== chat.id));
+
+      if (activeChatId === chat.id) {
+        setActiveChatId(null);
+        setMessages([]);
+        setMessageError("");
+      }
+    } catch (error) {
+      setChatsError(getErrorMessage(error, "Could not delete the conversation."));
+    } finally {
+      setDeletingChatId(null);
+    }
+  }
+
   async function handleSendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const content = prompt.trim();
@@ -267,9 +295,11 @@ export default function Home() {
         chatsLoading={chatsLoading}
         chatsError={chatsError}
         creatingChat={creatingChat}
+        deletingChatId={deletingChatId}
         historyEnabled={settings?.save_history ?? true}
         onNewConversation={handleNewConversation}
         onSelectChat={handleSelectChat}
+        onDeleteChat={handleDeleteChat}
         onChangeView={setActiveView}
         onSignOut={handleSignOut}
       />

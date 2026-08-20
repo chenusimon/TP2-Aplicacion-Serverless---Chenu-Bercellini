@@ -95,6 +95,17 @@ export async function updateChatTitle(
   }
 }
 
+export async function deleteChat(chatId: string, accessToken: string): Promise<void> {
+  const response = await fetch(`/api/chats/${chatId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!response.ok) {
+    throw new Error("Could not delete the conversation.");
+  }
+}
+
 export async function askAI(prompt: string): Promise<string> {
   const response = await fetch("/api/chat", {
     method: "POST",
