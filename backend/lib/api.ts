@@ -25,6 +25,11 @@ export async function getAuthenticatedSupabase(request: Request): Promise<{
 		global: { headers: { Authorization: `Bearer ${token}` } },
 	});
 	const { data, error } = await supabase.auth.getUser(token);
+	
+	if (error) {
+  		console.error("Supabase getUser error:", error);
+	}
+
 	if (error || !data.user) throw new ApiError(401, "The access token is invalid or expired.");
 	return { supabase, user: data.user };
 }

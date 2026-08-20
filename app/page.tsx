@@ -4,8 +4,20 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import type { Chat } from "@/backend/model";
 
-const chats = ["Planning a weekend trip", "Explain serverless apps", "Study notes for databases", "Ideas for a portfolio", "Help with TypeScript"];
+async function fetchChats(accessToken: string): Promise<Chat[]> {
+  const response = await fetch("/api/chats", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const result = (await response.json()) as { data?: Chat[]; error?: string };
+
+  if (!response.ok) {
+    throw new Error(result.error ?? "Could not load chats.");
+  }
+
+  return result.data ?? [];
+}
 
 function Icon({ name }: { name: "chat" | "edit" | "settings" | "user" | "send" | "menu" }) {
   const paths = {
@@ -23,6 +35,9 @@ export default function Home() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [chatsLoading, setChatsLoading] = useState(true);
+  const [chatsError, setChatsError] = useState("");
 
   useEffect(() => {
     const supabase = getSupabaseClient();
@@ -31,6 +46,17 @@ export default function Home() {
       if (!data.session) router.replace("/login");
       setUser(data.session?.user ?? null);
       setCheckingSession(false);
+
+      if (data.session) {
+        fetchChats(data.session.access_token)
+          .then(setChats)
+          .catch((error: unknown) => {
+            setChatsError(error instanceof Error ? error.message : "Could not load chats.");
+          })
+          .finally(() => setChatsLoading(false));
+      } else {
+        setChatsLoading(false);
+      }
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -59,7 +85,24 @@ export default function Home() {
         <button type="button" className="mt-3 flex h-11 items-center gap-3 rounded-xl border border-black/10 bg-white px-3 text-sm font-medium shadow-sm hover:bg-[#fafaf8]"><Icon name="edit" /> New conversation</button>
         <nav className="mt-7 min-h-0 flex-1 overflow-y-auto" aria-label="Chat history">
           <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-black/40">Recent</p>
-          <ul className="space-y-1">{chats.map((chat, index) => <li key={chat}><button type="button" className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-black/5 ${index === 0 ? "bg-black/[0.055] font-medium" : "text-black/65"}`}><Icon name="chat" /><span className="truncate">{chat}</span></button></li>)}</ul>
+          {chatsLoading ? (
+            <p className="px-3 py-2 text-sm text-black/40">Loading chats...</p>
+          ) : chatsError ? (
+            <p className="px-3 py-2 text-sm text-red-700/70">{chatsError}</p>
+          ) : chats.length === 0 ? (
+            <p className="px-3 py-2 text-sm text-black/40">No chats</p>
+          ) : (
+            <ul className="space-y-1">
+              {chats.map((chat, index) => (
+                <li key={chat.id}>
+                  <button type="button" className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-black/5 ${index === 0 ? "bg-black/[0.055] font-medium" : "text-black/65"}`}>
+                    <Icon name="chat" />
+                    <span className="truncate">{chat.title || "Untitled chat"}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </nav>
         <div className="space-y-1 border-t border-black/8 pt-3">
           <button type="button" className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-black/65 hover:bg-black/5"><Icon name="settings" /> Settings</button>
